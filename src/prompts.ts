@@ -111,10 +111,17 @@ const getOneLineCommitInstruction = () =>
     ? 'Craft a concise, single sentence, commit message that encapsulates all changes made, with an emphasis on the primary updates. If the modifications share a common theme or scope, mention it succinctly; otherwise, leave the scope out to maintain focus. The goal is to provide a clear and unified overview of the changes in one single message.'
     : '';
 
-const getScopeInstruction = () =>
-  config.OCO_OMIT_SCOPE
-    ? 'Do not include a scope in the commit message format. Use the format: <type>: <subject>'
-    : '';
+const getScopeInstruction = () => {
+  if (config.OCO_OMIT_SCOPE) {
+    return 'Do not include a scope in the commit message format. Use the format: <type>: <subject>';
+  }
+
+  if (config.OCO_JIRA_TICKET_SCOPE !== false) { // Default to true
+    return 'If a Jira ticket number is provided in the user context (formatted like ABC-1234), use it as the scope. Format should be: <type>(<jira-ticket>): <subject>';
+  }
+
+  return '';
+};
 
 /**
  * Get the context of the user input
@@ -125,7 +132,7 @@ const getScopeInstruction = () =>
  */
 const userInputCodeContext = (context: string) => {
   if (context !== '' && context !== ' ') {
-    return `Additional context provided by the user: <context>${context}</context>\nConsider this context when generating the commit message, incorporating relevant information when appropriate.`;
+    return `Jira ticket number provided by the user: <context>${context}</context>\nYou must use this number as the scope of the commit message`;
   }
   return '';
 };
@@ -147,10 +154,12 @@ const INIT_MAIN_PROMPT = (
     const descriptionGuideline = getDescriptionInstruction();
     const oneLineCommitGuideline = getOneLineCommitInstruction();
     const scopeInstruction = getScopeInstruction();
-    const generalGuidelines = `Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
+    const generalGuidelines = `Include the Jira ticket number GA-2000 in the scope of the commit message like so: <type>(GA-2000): <subject>. Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
     const userInputContext = userInputCodeContext(context);
 
-    return `${missionStatement}\n${diffInstruction}\n${conventionGuidelines}\n${descriptionGuideline}\n${oneLineCommitGuideline}\n${scopeInstruction}\n${generalGuidelines}\n${userInputContext}`;
+    const promptContent = `${missionStatement}\n${diffInstruction}\n${conventionGuidelines}\n${descriptionGuideline}\n${oneLineCommitGuideline}\n${scopeInstruction}\n${generalGuidelines}\n${userInputContext}`;
+    // console.log('DEBUG - Generated prompt:', promptContent);
+    return promptContent;
   })()
 });
 
