@@ -27,7 +27,8 @@ export enum CONFIG_KEYS {
   OCO_API_URL = 'OCO_API_URL',
   OCO_API_CUSTOM_HEADERS = 'OCO_API_CUSTOM_HEADERS',
   OCO_OMIT_SCOPE = 'OCO_OMIT_SCOPE',
-  OCO_GITPUSH = 'OCO_GITPUSH' // todo: deprecate
+  OCO_GITPUSH = 'OCO_GITPUSH', // todo: deprecate
+  OCO_JIRA_TICKET_SCOPE = 'OCO_JIRA_TICKET_SCOPE'
 }
 
 export enum CONFIG_MODES {
@@ -598,6 +599,16 @@ export const configValidators = {
     return value;
   },
 
+  [CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE](value: any) {
+    validateConfig(
+      CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE,
+      typeof value === 'boolean',
+      'Must be boolean: true or false'
+    );
+
+    return value;
+  },
+
   [CONFIG_KEYS.OCO_LANGUAGE](value: any) {
     const supportedLanguages = Object.keys(i18n);
 
@@ -746,6 +757,7 @@ export type ConfigType = {
   [CONFIG_KEYS.OCO_GITPUSH]: boolean;
   [CONFIG_KEYS.OCO_ONE_LINE_COMMIT]: boolean;
   [CONFIG_KEYS.OCO_OMIT_SCOPE]: boolean;
+  [CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE]: boolean;
   [CONFIG_KEYS.OCO_TEST_MOCK_TYPE]: string;
 };
 
@@ -784,7 +796,7 @@ export const DEFAULT_CONFIG = {
   OCO_TOKENS_MAX_INPUT: DEFAULT_TOKEN_LIMITS.DEFAULT_MAX_TOKENS_INPUT,
   OCO_TOKENS_MAX_OUTPUT: DEFAULT_TOKEN_LIMITS.DEFAULT_MAX_TOKENS_OUTPUT,
   OCO_DESCRIPTION: false,
-  OCO_EMOJI: false,
+  OCO_EMOJI: true,
   OCO_MODEL: getDefaultModel('openai'),
   OCO_LANGUAGE: 'en',
   OCO_MESSAGE_TEMPLATE_PLACEHOLDER: '$msg',
@@ -794,6 +806,7 @@ export const DEFAULT_CONFIG = {
   OCO_TEST_MOCK_TYPE: 'commit-message',
   OCO_WHY: false,
   OCO_OMIT_SCOPE: false,
+  OCO_JIRA_TICKET_SCOPE: true,
   OCO_GITPUSH: true // todo: deprecate
 };
 
@@ -834,7 +847,7 @@ const getEnvConfig = (envPath: string) => {
     OCO_ONE_LINE_COMMIT: parseConfigVarValue(process.env.OCO_ONE_LINE_COMMIT),
     OCO_TEST_MOCK_TYPE: process.env.OCO_TEST_MOCK_TYPE,
     OCO_OMIT_SCOPE: parseConfigVarValue(process.env.OCO_OMIT_SCOPE),
-
+    OCO_JIRA_TICKET_SCOPE: parseConfigVarValue(process.env.OCO_JIRA_TICKET_SCOPE),
     OCO_GITPUSH: parseConfigVarValue(process.env.OCO_GITPUSH) // todo: deprecate
   };
 };
@@ -1012,6 +1025,12 @@ function getConfigKeyDetails(key) {
     case CONFIG_KEYS.OCO_OMIT_SCOPE:
       return {
         description: 'Do not include a scope in the commit message',
+        values: ['true', 'false']
+      };
+    case CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE:
+      return {
+        description:
+          'Include JIRA ticket in the scope of the commit message (default: true)',
         values: ['true', 'false']
       };
     case CONFIG_KEYS.OCO_GITPUSH:
