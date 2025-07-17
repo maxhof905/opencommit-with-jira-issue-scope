@@ -106,7 +106,6 @@ describe('config', () => {
 
       envConfigFile = await generateConfig('.env', {
         OCO_TOKENS_MAX_INPUT: '8192',
-        OCO_ONE_LINE_COMMIT: 'false',
         OCO_OMIT_SCOPE: 'true'
       });
 
@@ -119,7 +118,6 @@ describe('config', () => {
       expect(config.OCO_TOKENS_MAX_INPUT).toEqual(8192);
       expect(config.OCO_TOKENS_MAX_OUTPUT).toEqual(500);
       expect(config.OCO_GITPUSH).toEqual(true);
-      expect(config.OCO_ONE_LINE_COMMIT).toEqual(false);
       expect(config.OCO_OMIT_SCOPE).toEqual(true);
     });
     
@@ -262,7 +260,6 @@ describe('config', () => {
         [
           [CONFIG_KEYS.OCO_TOKENS_MAX_INPUT, '8192'],
           [CONFIG_KEYS.OCO_DESCRIPTION, 'true'],
-          [CONFIG_KEYS.OCO_ONE_LINE_COMMIT, 'false']
         ],
         globalConfigFile.filePath
       );
@@ -272,7 +269,6 @@ describe('config', () => {
       });
       expect(config.OCO_TOKENS_MAX_INPUT).toEqual(8192);
       expect(config.OCO_DESCRIPTION).toEqual(true);
-      expect(config.OCO_ONE_LINE_COMMIT).toEqual(false);
     });
 
     it('should throw an error for unsupported config keys', async () => {

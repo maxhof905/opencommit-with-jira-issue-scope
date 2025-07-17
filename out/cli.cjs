@@ -50265,7 +50265,6 @@ var CONFIG_KEYS = /* @__PURE__ */ ((CONFIG_KEYS2) => {
   CONFIG_KEYS2["OCO_MESSAGE_TEMPLATE_PLACEHOLDER"] = "OCO_MESSAGE_TEMPLATE_PLACEHOLDER";
   CONFIG_KEYS2["OCO_PROMPT_MODULE"] = "OCO_PROMPT_MODULE";
   CONFIG_KEYS2["OCO_AI_PROVIDER"] = "OCO_AI_PROVIDER";
-  CONFIG_KEYS2["OCO_ONE_LINE_COMMIT"] = "OCO_ONE_LINE_COMMIT";
   CONFIG_KEYS2["OCO_TEST_MOCK_TYPE"] = "OCO_TEST_MOCK_TYPE";
   CONFIG_KEYS2["OCO_API_URL"] = "OCO_API_URL";
   CONFIG_KEYS2["OCO_API_CUSTOM_HEADERS"] = "OCO_API_CUSTOM_HEADERS";
@@ -50892,14 +50891,6 @@ var configValidators = {
     );
     return value;
   },
-  ["OCO_ONE_LINE_COMMIT" /* OCO_ONE_LINE_COMMIT */](value) {
-    validateConfig(
-      "OCO_ONE_LINE_COMMIT" /* OCO_ONE_LINE_COMMIT */,
-      typeof value === "boolean",
-      "Must be true or false"
-    );
-    return value;
-  },
   ["OCO_TEST_MOCK_TYPE" /* OCO_TEST_MOCK_TYPE */](value) {
     validateConfig(
       "OCO_TEST_MOCK_TYPE" /* OCO_TEST_MOCK_TYPE */,
@@ -50951,7 +50942,6 @@ var DEFAULT_CONFIG = {
   OCO_MESSAGE_TEMPLATE_PLACEHOLDER: "$msg",
   OCO_PROMPT_MODULE: "conventional-commit" /* CONVENTIONAL_COMMIT */,
   OCO_AI_PROVIDER: "openai" /* OPENAI */,
-  OCO_ONE_LINE_COMMIT: false,
   OCO_TEST_MOCK_TYPE: "commit-message",
   OCO_WHY: false,
   OCO_OMIT_SCOPE: false,
@@ -50987,7 +50977,6 @@ var getEnvConfig = (envPath) => {
     OCO_LANGUAGE: process.env.OCO_LANGUAGE,
     OCO_MESSAGE_TEMPLATE_PLACEHOLDER: process.env.OCO_MESSAGE_TEMPLATE_PLACEHOLDER,
     OCO_PROMPT_MODULE: process.env.OCO_PROMPT_MODULE,
-    OCO_ONE_LINE_COMMIT: parseConfigVarValue(process.env.OCO_ONE_LINE_COMMIT),
     OCO_TEST_MOCK_TYPE: process.env.OCO_TEST_MOCK_TYPE,
     OCO_OMIT_SCOPE: parseConfigVarValue(process.env.OCO_OMIT_SCOPE),
     OCO_JIRA_TICKET_SCOPE: parseConfigVarValue(process.env.OCO_JIRA_TICKET_SCOPE),
@@ -51103,11 +51092,6 @@ function getConfigKeyDetails(key) {
       return {
         description: "The type of test mock to use",
         values: ["commit-message", "prompt-module-commitlint-config"]
-      };
-    case "OCO_ONE_LINE_COMMIT" /* OCO_ONE_LINE_COMMIT */:
-      return {
-        description: "One line commit message",
-        values: ["true", "false"]
       };
     case "OCO_DESCRIPTION" /* OCO_DESCRIPTION */:
       return {
@@ -66774,7 +66758,6 @@ var INIT_MAIN_PROMPT = (language, prompts) => ({
 ${config2.OCO_EMOJI ? "Use GitMoji convention to preface the commit." : "Do not preface the commit with anything."}
 ${config2.OCO_DESCRIPTION ? `Add a short description of WHY the changes are done after the commit message. Don't start it with "This commit", just describe the changes.` : "Don't add any descriptions to the commit, only commit message."}
 Use the present tense. Use ${language} to answer.
-${config2.OCO_ONE_LINE_COMMIT ? "Craft a concise commit message that encapsulates all changes made, with an emphasis on the primary updates. If the modifications share a common theme or scope, mention it succinctly; otherwise, leave the scope out to maintain focus. The goal is to provide a clear and unified overview of the changes in a one single message, without diverging into a list of commit per file change." : ""}
 ${config2.OCO_OMIT_SCOPE ? "Do not include a scope in the commit message format. Use the format: <type>: <subject>" : ""}
 You will strictly follow the following conventions to generate the content of the commit message:
 - ${prompts.join("\n- ")}
@@ -66929,11 +66912,108 @@ function removeConventionalCommitWord(message) {
   return message.replace(/^(fix|feat)\((.+?)\):/, "($2):");
 }
 
+// src/utils/git.ts
+var import_fs3 = require("fs");
+var import_ignore = __toESM(require_ignore(), 1);
+var assertGitRepo = async () => {
+  try {
+    await execa("git", ["rev-parse"]);
+  } catch (error) {
+    throw new Error(error);
+  }
+};
+var getOpenCommitIgnore = () => {
+  const ig = (0, import_ignore.default)();
+  try {
+    ig.add((0, import_fs3.readFileSync)(".opencommitignore").toString().split("\n"));
+  } catch (e3) {
+  }
+  return ig;
+};
+var getCoreHooksPath = async () => {
+  const { stdout } = await execa("git", ["config", "core.hooksPath"]);
+  return stdout;
+};
+var getStagedFiles = async () => {
+  const { stdout: gitDir } = await execa("git", [
+    "rev-parse",
+    "--show-toplevel"
+  ]);
+  const { stdout: files } = await execa("git", [
+    "diff",
+    "--name-only",
+    "--cached",
+    "--relative",
+    gitDir
+  ]);
+  if (!files) return [];
+  const filesList = files.split("\n");
+  const ig = getOpenCommitIgnore();
+  const allowedFiles = filesList.filter((file) => !ig.ignores(file));
+  if (!allowedFiles) return [];
+  return allowedFiles.sort();
+};
+var getChangedFiles = async () => {
+  const { stdout: modified } = await execa("git", ["ls-files", "--modified"]);
+  const { stdout: others } = await execa("git", [
+    "ls-files",
+    "--others",
+    "--exclude-standard"
+  ]);
+  const files = [...modified.split("\n"), ...others.split("\n")].filter(
+    (file) => !!file
+  );
+  return files.sort();
+};
+var gitAdd = async ({ files }) => {
+  const gitAddSpinner = le();
+  gitAddSpinner.start("Adding files to commit");
+  await execa("git", ["add", ...files]);
+  gitAddSpinner.stop(`Staged ${files.length} files`);
+};
+var cachedJiraTicket = null;
+var getJiraTicketFromBranch = async () => {
+  if (cachedJiraTicket !== null) return cachedJiraTicket;
+  try {
+    const { stdout } = await execa("git", ["branch", "--show-current"]);
+    const branchName = stdout.trim();
+    const jiraTicketMatch = branchName.match(/([A-Z]+-\d+)/);
+    cachedJiraTicket = jiraTicketMatch ? jiraTicketMatch[1] : "";
+    return cachedJiraTicket || null;
+  } catch (error) {
+    cachedJiraTicket = "";
+    return null;
+  }
+};
+var getDiff = async ({ files }) => {
+  const lockFiles = files.filter(
+    (file) => file.includes(".lock") || file.includes("-lock.") || file.includes(".svg") || file.includes(".png") || file.includes(".jpg") || file.includes(".jpeg") || file.includes(".webp") || file.includes(".gif")
+  );
+  if (lockFiles.length) {
+    ce(
+      `Some files are excluded by default from 'git diff'. No commit messages are generated for this files:
+${lockFiles.join(
+        "\n"
+      )}`
+    );
+  }
+  const filesWithoutLocks = files.filter(
+    (file) => !file.includes(".lock") && !file.includes("-lock.")
+  );
+  const { stdout: diff } = await execa("git", [
+    "diff",
+    "--staged",
+    "--",
+    ...filesWithoutLocks
+  ]);
+  return diff;
+};
+
 // src/prompts.ts
 var config4 = getConfig();
 var translation3 = i18n[config4.OCO_LANGUAGE || "en"];
 var IDENTITY = "You are to act as an author of a commit message in git.";
-var GITMOJI_HELP = `Use GitMoji convention to preface the commit. Here are some help to choose the right emoji (emoji, description): 
+var GITMOJI_HELP = `Use GitMoji convention to preface the conventional commit keywords. The expected output format is: \`<emoji><keyword>(<scope>):<commit message>\`. Here are some help to choose the right emoji (emoji, description): 
 \u{1F41B}, Fix a bug; 
 \u2728, Introduce new features; 
 \u{1F4DD}, Add or update documentation; 
@@ -66943,7 +67023,8 @@ var GITMOJI_HELP = `Use GitMoji convention to preface the commit. Here are some 
 \u2B06\uFE0F, Upgrade dependencies; 
 \u{1F527}, Add or update configuration files; 
 \u{1F310}, Internationalization and localization; 
-\u{1F4A1}, Add or update comments in source code;`;
+\u{1F4A1}, Add or update comments in source code;
+`;
 var FULL_GITMOJI_SPEC = `${GITMOJI_HELP}
 \u{1F3A8}, Improve structure / format of the code; 
 \u26A1\uFE0F, Improve performance; 
@@ -67008,55 +67089,62 @@ var FULL_GITMOJI_SPEC = `${GITMOJI_HELP}
 \u{1F4B8}, Add sponsorships or money related infrastructure; 
 \u{1F9F5}, Add or update code related to multithreading or concurrency; 
 \u{1F9BA}, Add or update code related to validation.`;
-var CONVENTIONAL_COMMIT_KEYWORDS = "Do not preface the commit with anything, except for the conventional commit keywords: fix, feat, build, chore, ci, docs, style, refactor, perf, test.";
+var CONVENTIONAL_COMMIT_KEYWORDS = "Preface the commit with the conventional commit keywords: fix, feat, build, chore, ci, docs, style, refactor, perf, test, eval.";
 var getCommitConvention = (fullGitMojiSpec) => {
   let result = "";
   result += `${CONVENTIONAL_COMMIT_KEYWORDS}
 `;
   if (config4.OCO_EMOJI) {
-    result += fullGitMojiSpec ? FULL_GITMOJI_SPEC : GITMOJI_HELP;
+    result += "\n" + (fullGitMojiSpec ? FULL_GITMOJI_SPEC : GITMOJI_HELP);
   }
   return result.trim();
 };
 var getDescriptionInstruction = () => config4.OCO_DESCRIPTION ? `Add a short description of WHY the changes are done after the commit message. Don't start it with "This commit", just describe the changes.` : "Don't add any descriptions to the commit, only commit message.";
-var getOneLineCommitInstruction = () => config4.OCO_ONE_LINE_COMMIT ? "Craft a concise, single sentence, commit message that encapsulates all changes made, with an emphasis on the primary updates. If the modifications share a common theme or scope, mention it succinctly; otherwise, leave the scope out to maintain focus. The goal is to provide a clear and unified overview of the changes in one single message." : "";
-var getScopeInstruction = () => {
+var getScopeInstruction = async () => {
   if (config4.OCO_OMIT_SCOPE) {
     return "Do not include a scope in the commit message format. Use the format: <type>: <subject>";
+  } else if (config4.OCO_JIRA_TICKET_SCOPE) {
+    const jiraTicket = await getJiraTicketFromBranch();
+    if (jiraTicket) {
+      return `Use the Jira ticket number "${jiraTicket}" as the scope of the commit message. The expected output format is: \`<emoji><keyword>(<scope>):<commit message>\``;
+    }
+    return "Use the Jira ticket number (formatted like GA-1234), as the scope of the commit message. The expected output format is: `<emoji><keyword>(<scope>):<commit message>`";
+  } else {
+    return "";
   }
-  if (config4.OCO_JIRA_TICKET_SCOPE !== false) {
-    return "If a Jira ticket number is provided in the user context (formatted like ABC-1234), use it as the scope. Format should be: <type>(<jira-ticket>): <subject>";
-  }
-  return "";
 };
 var userInputCodeContext = (context) => {
   if (context !== "" && context !== " ") {
-    return `Jira ticket number provided by the user: <context>${context}</context>
-You must use this number as the scope of the commit message`;
+    return `Additional context provided by the user: <context>${context}</context>
+Consider this context when generating the commit message, incorporating relevant information when appropriate.`;
   }
   return "";
 };
-var INIT_MAIN_PROMPT2 = (language, fullGitMojiSpec, context) => ({
+var INIT_MAIN_PROMPT2 = async (language, fullGitMojiSpec, context) => ({
   role: "system",
-  content: (() => {
+  content: await (async () => {
     const commitConvention = fullGitMojiSpec ? "GitMoji specification" : "Conventional Commit Convention";
-    const missionStatement = `${IDENTITY} Your mission is to create clean and comprehensive commit messages as per the ${commitConvention} and explain WHAT were the changes and mainly WHY the changes were done.`;
+    const missionStatement = `${IDENTITY} Your mission is to create clean and comprehensive commit messages as per the ${commitConvention} and explain WHAT changes were made and WHY they were made.`;
     const diffInstruction = "I'll send you an output of 'git diff --staged' command, and you are to convert it into a commit message.";
     const conventionGuidelines = getCommitConvention(fullGitMojiSpec);
     const descriptionGuideline = getDescriptionInstruction();
-    const oneLineCommitGuideline = getOneLineCommitInstruction();
-    const scopeInstruction = getScopeInstruction();
-    const generalGuidelines = `Include the Jira ticket number GA-2000 in the scope of the commit message like so: <type>(GA-2000): <subject>. Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
+    const scopeInstruction = await getScopeInstruction();
+    const generalGuidelines = `Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
     const userInputContext = userInputCodeContext(context);
-    const promptContent = `${missionStatement}
-${diffInstruction}
-${conventionGuidelines}
-${descriptionGuideline}
-${oneLineCommitGuideline}
-${scopeInstruction}
-${generalGuidelines}
-${userInputContext}`;
-    console.log("DEBUG - Generated prompt:", promptContent);
+    const promptContent = `
+  # Your Mission
+  ${missionStatement}
+  ## Task
+  ${diffInstruction}
+  ## Commit Guidelines
+  * ${conventionGuidelines}
+  * ${scopeInstruction}
+  ## General Guidelines
+  * ${generalGuidelines}
+  * ${descriptionGuideline}
+  * ${userInputContext}
+  `.trim();
+    console.log("DEBUG - Generated prompt:\n", promptContent);
     return promptContent;
   })()
 });
@@ -67099,7 +67187,7 @@ var getConsistencyContent = (translation4) => {
   const fixMessage = config4.OCO_OMIT_SCOPE && translation4.commitFixOmitScope ? translation4.commitFixOmitScope : translation4.commitFix;
   const featMessage = config4.OCO_OMIT_SCOPE && translation4.commitFeatOmitScope ? translation4.commitFeatOmitScope : translation4.commitFeat;
   const fix = generateCommitString("fix", fixMessage);
-  const feat = config4.OCO_ONE_LINE_COMMIT ? "" : generateCommitString("feat", featMessage);
+  const feat = generateCommitString("feat", featMessage);
   const description = config4.OCO_DESCRIPTION ? translation4.commitDescription : "";
   return [fix, feat, description].filter(Boolean).join("\n");
 };
@@ -67129,7 +67217,7 @@ var getMainCommitPrompt = async (fullGitMojiSpec, context) => {
       ];
     default:
       return [
-        INIT_MAIN_PROMPT2(translation3.localLanguage, fullGitMojiSpec, context),
+        await INIT_MAIN_PROMPT2(translation3.localLanguage, fullGitMojiSpec, context),
         INIT_DIFF_PROMPT,
         INIT_CONSISTENCY_PROMPT(translation3)
       ];
@@ -67156,9 +67244,7 @@ function mergeDiffs(arr, maxStringLength) {
 var config5 = getConfig();
 var MAX_TOKENS_INPUT = config5.OCO_TOKENS_MAX_INPUT;
 var MAX_TOKENS_OUTPUT = config5.OCO_TOKENS_MAX_OUTPUT;
-var generateCommitMessageChatCompletionPrompt = async (diff, fullGitMojiSpec, context = "") => {
-  console.log("DEBUG - Diff content:");
-  console.log(diff);
+var generateCommitMessageChatCompletionPrompt = async (diff, fullGitMojiSpec, context) => {
   const INIT_MESSAGES_PROMPT = await getMainCommitPrompt(
     fullGitMojiSpec,
     context
@@ -67297,89 +67383,6 @@ var getCommitMsgsPromisesFromFileDiffs = async (diff, maxDiffLength, fullGitMoji
 function delay3(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
-
-// src/utils/git.ts
-var import_fs3 = require("fs");
-var import_ignore = __toESM(require_ignore(), 1);
-var assertGitRepo = async () => {
-  try {
-    await execa("git", ["rev-parse"]);
-  } catch (error) {
-    throw new Error(error);
-  }
-};
-var getOpenCommitIgnore = () => {
-  const ig = (0, import_ignore.default)();
-  try {
-    ig.add((0, import_fs3.readFileSync)(".opencommitignore").toString().split("\n"));
-  } catch (e3) {
-  }
-  return ig;
-};
-var getCoreHooksPath = async () => {
-  const { stdout } = await execa("git", ["config", "core.hooksPath"]);
-  return stdout;
-};
-var getStagedFiles = async () => {
-  const { stdout: gitDir } = await execa("git", [
-    "rev-parse",
-    "--show-toplevel"
-  ]);
-  const { stdout: files } = await execa("git", [
-    "diff",
-    "--name-only",
-    "--cached",
-    "--relative",
-    gitDir
-  ]);
-  if (!files) return [];
-  const filesList = files.split("\n");
-  const ig = getOpenCommitIgnore();
-  const allowedFiles = filesList.filter((file) => !ig.ignores(file));
-  if (!allowedFiles) return [];
-  return allowedFiles.sort();
-};
-var getChangedFiles = async () => {
-  const { stdout: modified } = await execa("git", ["ls-files", "--modified"]);
-  const { stdout: others } = await execa("git", [
-    "ls-files",
-    "--others",
-    "--exclude-standard"
-  ]);
-  const files = [...modified.split("\n"), ...others.split("\n")].filter(
-    (file) => !!file
-  );
-  return files.sort();
-};
-var gitAdd = async ({ files }) => {
-  const gitAddSpinner = le();
-  gitAddSpinner.start("Adding files to commit");
-  await execa("git", ["add", ...files]);
-  gitAddSpinner.stop(`Staged ${files.length} files`);
-};
-var getDiff = async ({ files }) => {
-  const lockFiles = files.filter(
-    (file) => file.includes(".lock") || file.includes("-lock.") || file.includes(".svg") || file.includes(".png") || file.includes(".jpg") || file.includes(".jpeg") || file.includes(".webp") || file.includes(".gif")
-  );
-  if (lockFiles.length) {
-    ce(
-      `Some files are excluded by default from 'git diff'. No commit messages are generated for this files:
-${lockFiles.join(
-        "\n"
-      )}`
-    );
-  }
-  const filesWithoutLocks = files.filter(
-    (file) => !file.includes(".lock") && !file.includes("-lock.")
-  );
-  const { stdout: diff } = await execa("git", [
-    "diff",
-    "--staged",
-    "--",
-    ...filesWithoutLocks
-  ]);
-  return diff;
-};
 
 // src/utils/trytm.ts
 var trytm = async (promise) => {
