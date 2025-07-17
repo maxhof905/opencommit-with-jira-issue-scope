@@ -47769,7 +47769,7 @@ var package_default = {
     chalk: "^5.2.0",
     cleye: "^1.3.2",
     crypto: "^1.0.1",
-    execa: "^7.0.0",
+    execa: "^7.2.0",
     ignore: "^5.2.4",
     ini: "^3.0.1",
     inquirer: "^9.1.4",
@@ -66971,20 +66971,6 @@ var gitAdd = async ({ files }) => {
   await execa("git", ["add", ...files]);
   gitAddSpinner.stop(`Staged ${files.length} files`);
 };
-var cachedJiraTicket = null;
-var getJiraTicketFromBranch = async () => {
-  if (cachedJiraTicket !== null) return cachedJiraTicket;
-  try {
-    const { stdout } = await execa("git", ["branch", "--show-current"]);
-    const branchName = stdout.trim();
-    const jiraTicketMatch = branchName.match(/([A-Z]+-\d+)/);
-    cachedJiraTicket = jiraTicketMatch ? jiraTicketMatch[1] : "";
-    return cachedJiraTicket || null;
-  } catch (error) {
-    cachedJiraTicket = "";
-    return null;
-  }
-};
 var getDiff = async ({ files }) => {
   const lockFiles = files.filter(
     (file) => file.includes(".lock") || file.includes("-lock.") || file.includes(".svg") || file.includes(".png") || file.includes(".jpg") || file.includes(".jpeg") || file.includes(".webp") || file.includes(".gif")
@@ -67007,6 +66993,13 @@ ${lockFiles.join(
     ...filesWithoutLocks
   ]);
   return diff;
+};
+var getJiraTicketFromBranch = async () => {
+  const { stdout } = await execa("git", ["branch", "--show-current"]);
+  const branchName = stdout.trim();
+  const jiraTicketMatch = branchName.match(/([A-Z]+-\d+)/);
+  console.log("DEBUG - jiraTicketMatch:\n", jiraTicketMatch);
+  return jiraTicketMatch[1];
 };
 
 // src/prompts.ts
@@ -67100,15 +67093,11 @@ var getCommitConvention = (fullGitMojiSpec) => {
   return result.trim();
 };
 var getDescriptionInstruction = () => config4.OCO_DESCRIPTION ? `Add a short description of WHY the changes are done after the commit message. Don't start it with "This commit", just describe the changes.` : "Don't add any descriptions to the commit, only commit message.";
-var getScopeInstruction = async () => {
-  if (config4.OCO_OMIT_SCOPE) {
+var getScopeInstruction = (jiraTicket) => {
+  if (config4.OCO_JIRA_TICKET_SCOPE) {
+    return `Use "${jiraTicket}" as the scope of the commit message. The expected output format is: \`<emoji><keyword>(${jiraTicket}):<commit message>\``;
+  } else if (config4.OCO_OMIT_SCOPE) {
     return "Do not include a scope in the commit message format. Use the format: <type>: <subject>";
-  } else if (config4.OCO_JIRA_TICKET_SCOPE) {
-    const jiraTicket = await getJiraTicketFromBranch();
-    if (jiraTicket) {
-      return `Use the Jira ticket number "${jiraTicket}" as the scope of the commit message. The expected output format is: \`<emoji><keyword>(<scope>):<commit message>\``;
-    }
-    return "Use the Jira ticket number (formatted like GA-1234), as the scope of the commit message. The expected output format is: `<emoji><keyword>(<scope>):<commit message>`";
   } else {
     return "";
   }
@@ -67120,16 +67109,16 @@ Consider this context when generating the commit message, incorporating relevant
   }
   return "";
 };
-var INIT_MAIN_PROMPT2 = async (language, fullGitMojiSpec, context) => ({
+var INIT_MAIN_PROMPT2 = (language, fullGitMojiSpec, context, jiraTicket) => ({
   role: "system",
-  content: await (async () => {
+  content: (() => {
     const commitConvention = fullGitMojiSpec ? "GitMoji specification" : "Conventional Commit Convention";
-    const missionStatement = `${IDENTITY} Your mission is to create clean and comprehensive commit messages as per the ${commitConvention} and explain WHAT changes were made and WHY they were made.`;
+    const missionStatement = `${IDENTITY} Your mission is to create a clean and comprehensive commit message as per the ${commitConvention} and explain WHAT changes were made and WHY they were made.`;
     const diffInstruction = "I'll send you an output of 'git diff --staged' command, and you are to convert it into a commit message.";
     const conventionGuidelines = getCommitConvention(fullGitMojiSpec);
     const descriptionGuideline = getDescriptionInstruction();
-    const scopeInstruction = await getScopeInstruction();
-    const generalGuidelines = `Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
+    const scopeInstruction = getScopeInstruction(jiraTicket);
+    const generalGuidelines = `Craft a concise, single sentence, commit message that encapsulates all changes made, with an emphasis on the primary updates. The goal is to provide a clear and unified overview of the changes in one single message. Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
     const userInputContext = userInputCodeContext(context);
     const promptContent = `
   # Your Mission
@@ -67195,7 +67184,8 @@ var INIT_CONSISTENCY_PROMPT = (translation4) => ({
   role: "assistant",
   content: getConsistencyContent(translation4)
 });
-var getMainCommitPrompt = async (fullGitMojiSpec, context) => {
+var getMainCommitPrompt = async (fullGitMojiSpec, context, jiraTicket) => {
+  const resolvedJiraTicket = await getJiraTicketFromBranch();
   switch (config4.OCO_PROMPT_MODULE) {
     case "@commitlint":
       if (!await commitlintLLMConfigExists()) {
@@ -67217,7 +67207,7 @@ var getMainCommitPrompt = async (fullGitMojiSpec, context) => {
       ];
     default:
       return [
-        await INIT_MAIN_PROMPT2(translation3.localLanguage, fullGitMojiSpec, context),
+        INIT_MAIN_PROMPT2(translation3.localLanguage, fullGitMojiSpec, context, resolvedJiraTicket),
         INIT_DIFF_PROMPT,
         INIT_CONSISTENCY_PROMPT(translation3)
       ];
@@ -67244,10 +67234,11 @@ function mergeDiffs(arr, maxStringLength) {
 var config5 = getConfig();
 var MAX_TOKENS_INPUT = config5.OCO_TOKENS_MAX_INPUT;
 var MAX_TOKENS_OUTPUT = config5.OCO_TOKENS_MAX_OUTPUT;
-var generateCommitMessageChatCompletionPrompt = async (diff, fullGitMojiSpec, context) => {
+var generateCommitMessageChatCompletionPrompt = async (diff, fullGitMojiSpec, context, jiraTicket) => {
   const INIT_MESSAGES_PROMPT = await getMainCommitPrompt(
     fullGitMojiSpec,
-    context
+    context,
+    jiraTicket
   );
   const chatContextAsCompletionRequest = [...INIT_MESSAGES_PROMPT];
   chatContextAsCompletionRequest.push({
@@ -67264,11 +67255,12 @@ var GenerateCommitMessageErrorEnum = ((GenerateCommitMessageErrorEnum2) => {
   return GenerateCommitMessageErrorEnum2;
 })(GenerateCommitMessageErrorEnum || {});
 var ADJUSTMENT_FACTOR = 20;
-var generateCommitMessageByDiff = async (diff, fullGitMojiSpec = false, context = "") => {
+var generateCommitMessageByDiff = async (diff, fullGitMojiSpec = false, context = "", jiraTicket) => {
   try {
     const INIT_MESSAGES_PROMPT = await getMainCommitPrompt(
       fullGitMojiSpec,
-      context
+      context,
+      jiraTicket
     );
     const INIT_MESSAGES_PROMPT_LENGTH = INIT_MESSAGES_PROMPT.map(
       (msg) => tokenCount(msg.content) + 4
@@ -67290,7 +67282,8 @@ var generateCommitMessageByDiff = async (diff, fullGitMojiSpec = false, context 
     const messages = await generateCommitMessageChatCompletionPrompt(
       diff,
       fullGitMojiSpec,
-      context
+      context,
+      jiraTicket
     );
     const engine = getEngine();
     const commitMessage = await engine.generateCommitMessage(messages);
@@ -67301,7 +67294,7 @@ var generateCommitMessageByDiff = async (diff, fullGitMojiSpec = false, context 
     throw error;
   }
 };
-function getMessagesPromisesByChangesInFile(fileDiff, separator, maxChangeLength, fullGitMojiSpec) {
+function getMessagesPromisesByChangesInFile(fileDiff, separator, maxChangeLength, fullGitMojiSpec, jiraTicket) {
   const hunkHeaderSeparator = "@@ ";
   const [fileHeader, ...fileDiffByLines] = fileDiff.split(hunkHeaderSeparator);
   const mergedChanges = mergeDiffs(
@@ -67323,7 +67316,8 @@ function getMessagesPromisesByChangesInFile(fileDiff, separator, maxChangeLength
     async (lineDiff) => {
       const messages = await generateCommitMessageChatCompletionPrompt(
         separator + lineDiff,
-        fullGitMojiSpec
+        fullGitMojiSpec,
+        jiraTicket
       );
       return engine.generateCommitMessage(messages);
     }
@@ -67355,7 +67349,7 @@ function splitDiff(diff, maxChangeLength) {
   }
   return splitDiffs;
 }
-var getCommitMsgsPromisesFromFileDiffs = async (diff, maxDiffLength, fullGitMojiSpec) => {
+var getCommitMsgsPromisesFromFileDiffs = async (diff, maxDiffLength, fullGitMojiSpec, jiraTicket) => {
   const separator = "diff --git ";
   const diffByFiles = diff.split(separator).slice(1);
   const mergedFilesDiffs = mergeDiffs(diffByFiles, maxDiffLength);
@@ -67372,7 +67366,8 @@ var getCommitMsgsPromisesFromFileDiffs = async (diff, maxDiffLength, fullGitMoji
     } else {
       const messages = await generateCommitMessageChatCompletionPrompt(
         separator + fileDiff,
-        fullGitMojiSpec
+        fullGitMojiSpec,
+        jiraTicket
       );
       const engine = getEngine();
       commitMessagePromises.push(engine.generateCommitMessage(messages));
@@ -67413,7 +67408,8 @@ var generateCommitMessageFromGitDiff = async ({
   extraArgs: extraArgs2,
   context = "",
   fullGitMojiSpec = false,
-  skipCommitConfirmation = false
+  skipCommitConfirmation = false,
+  jiraTicket
 }) => {
   await assertGitRepo();
   const commitGenerationSpinner = le();
@@ -67580,13 +67576,15 @@ async function commit(extraArgs2 = [], context = "", isStageAllFlag = false, ful
     `${stagedFiles.length} staged files:
 ${stagedFiles.map((file) => `  ${file}`).join("\n")}`
   );
+  const jiraTicket = await getJiraTicketFromBranch();
   const [, generateCommitError] = await trytm(
     generateCommitMessageFromGitDiff({
       diff: await getDiff({ files: stagedFiles }),
       extraArgs: extraArgs2,
       context,
       fullGitMojiSpec,
-      skipCommitConfirmation
+      skipCommitConfirmation,
+      jiraTicket
     })
   );
   if (generateCommitError) {

@@ -7,6 +7,7 @@ import { commitlintPrompts } from './modules/commitlint/prompts';
 import { ConsistencyPrompt } from './modules/commitlint/types';
 import * as utils from './modules/commitlint/utils';
 import { removeConventionalCommitWord } from './utils/removeConventionalCommitWord';
+import { getJiraTicketFromBranch } from './utils/git';
 
 const config = getConfig();
 const translation = i18n[(config.OCO_LANGUAGE as I18nLocals) || 'en'];
@@ -110,11 +111,11 @@ const getDescriptionInstruction = () =>
     ? 'Add a short description of WHY the changes are done after the commit message. Don\'t start it with "This commit", just describe the changes.'
     : "Don't add any descriptions to the commit, only commit message.";
 
-const getScopeInstruction = () => {
-  if (config.OCO_OMIT_SCOPE) {
+const getScopeInstruction = (jiraTicket?: string) => {
+  if (config.OCO_JIRA_TICKET_SCOPE) {
+    return `Use "${jiraTicket}" as the scope of the commit message. The expected output format is: \`<emoji><keyword>(${jiraTicket}):<commit message>\``;
+  } else if (config.OCO_OMIT_SCOPE) {
     return 'Do not include a scope in the commit message format. Use the format: <type>: <subject>';
-  } else if (config.OCO_JIRA_TICKET_SCOPE) {
-    return 'Use the Jira ticket number (formatted like GA-1234), as the scope of the commit message. The expected output format is: `<emoji><keyword>(<scope>):<commit message>`';
   } else {
     return '';
   }
@@ -137,20 +138,21 @@ const userInputCodeContext = (context: string) => {
 const INIT_MAIN_PROMPT = (
   language: string,
   fullGitMojiSpec: boolean,
-  context: string
+  context: string,
+  jiraTicket?: string
 ): OpenAI.Chat.Completions.ChatCompletionMessageParam => ({
   role: 'system',
   content: (() => {
     const commitConvention = fullGitMojiSpec
       ? 'GitMoji specification'
       : 'Conventional Commit Convention';
-    const missionStatement = `${IDENTITY} Your mission is to create clean and comprehensive commit messages as per the ${commitConvention} and explain WHAT changes were made and WHY they were made.`;
+    const missionStatement = `${IDENTITY} Your mission is to create a clean and comprehensive commit message as per the ${commitConvention} and explain WHAT changes were made and WHY they were made.`;
     const diffInstruction =
       "I'll send you an output of 'git diff --staged' command, and you are to convert it into a commit message.";
     const conventionGuidelines = getCommitConvention(fullGitMojiSpec);
     const descriptionGuideline = getDescriptionInstruction();
-    const scopeInstruction = getScopeInstruction();
-    const generalGuidelines = `Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
+    const scopeInstruction = getScopeInstruction(jiraTicket);
+    const generalGuidelines = `Craft a concise, single sentence, commit message that encapsulates all changes made, with an emphasis on the primary updates. The goal is to provide a clear and unified overview of the changes in one single message. Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
     const userInputContext = userInputCodeContext(context);
 
     const promptContent = `
@@ -166,7 +168,6 @@ const INIT_MAIN_PROMPT = (
   * ${descriptionGuideline}
   * ${userInputContext}
   `.trim();
-    console.log('DEBUG - Generated prompt:\n', promptContent);
     return promptContent;
   })()
 });
@@ -243,8 +244,10 @@ const INIT_CONSISTENCY_PROMPT = (
 
 export const getMainCommitPrompt = async (
   fullGitMojiSpec: boolean,
-  context: string
+  context: string,
+  jiraTicket?: Promise<string>
 ): Promise<Array<OpenAI.Chat.Completions.ChatCompletionMessageParam>> => {
+  const resolvedJiraTicket = await getJiraTicketFromBranch();
   switch (config.OCO_PROMPT_MODULE) {
     case '@commitlint':
       if (!(await utils.commitlintLLMConfigExists())) {
@@ -272,7 +275,7 @@ export const getMainCommitPrompt = async (
 
     default:
       return [
-        INIT_MAIN_PROMPT(translation.localLanguage, fullGitMojiSpec, context),
+        INIT_MAIN_PROMPT(translation.localLanguage, fullGitMojiSpec, context, resolvedJiraTicket),
         INIT_DIFF_PROMPT,
         INIT_CONSISTENCY_PROMPT(translation)
       ];

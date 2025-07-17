@@ -4,19 +4,23 @@ import { getMainCommitPrompt } from './prompts';
 import { getEngine } from './utils/engine';
 import { mergeDiffs } from './utils/mergeDiffs';
 import { tokenCount } from './utils/tokenCount';
+import { getJiraTicketFromBranch } from './utils/git';
 
 const config = getConfig();
 const MAX_TOKENS_INPUT = config.OCO_TOKENS_MAX_INPUT;
 const MAX_TOKENS_OUTPUT = config.OCO_TOKENS_MAX_OUTPUT;
 
+
 const generateCommitMessageChatCompletionPrompt = async (
   diff: string,
   fullGitMojiSpec: boolean,
-  context: string
+  context: string,
+  jiraTicket?: string
 ): Promise<Array<OpenAI.Chat.Completions.ChatCompletionMessageParam>> => {
   const INIT_MESSAGES_PROMPT = await getMainCommitPrompt(
     fullGitMojiSpec,
-    context
+    context,
+    jiraTicket
   );
 
   const chatContextAsCompletionRequest = [...INIT_MESSAGES_PROMPT];
@@ -41,12 +45,14 @@ const ADJUSTMENT_FACTOR = 20;
 export const generateCommitMessageByDiff = async (
   diff: string,
   fullGitMojiSpec: boolean = false,
-  context: string = ''
+  context: string = '',
+  jiraTicket?: string
 ): Promise<string> => {
   try {
     const INIT_MESSAGES_PROMPT = await getMainCommitPrompt(
       fullGitMojiSpec,
-      context
+      context,
+      jiraTicket,
     );
 
     const INIT_MESSAGES_PROMPT_LENGTH = INIT_MESSAGES_PROMPT.map(
@@ -78,7 +84,8 @@ export const generateCommitMessageByDiff = async (
     const messages = await generateCommitMessageChatCompletionPrompt(
       diff,
       fullGitMojiSpec,
-      context
+      context,
+      jiraTicket,
     );
 
     const engine = getEngine();
@@ -97,7 +104,8 @@ function getMessagesPromisesByChangesInFile(
   fileDiff: string,
   separator: string,
   maxChangeLength: number,
-  fullGitMojiSpec: boolean
+  fullGitMojiSpec: boolean,
+  jiraTicket?: string
 ) {
   const hunkHeaderSeparator = '@@ ';
   const [fileHeader, ...fileDiffByLines] = fileDiff.split(hunkHeaderSeparator);
@@ -125,7 +133,8 @@ function getMessagesPromisesByChangesInFile(
     async (lineDiff) => {
       const messages = await generateCommitMessageChatCompletionPrompt(
         separator + lineDiff,
-        fullGitMojiSpec
+        fullGitMojiSpec,
+        jiraTicket
       );
 
       return engine.generateCommitMessage(messages);
@@ -174,7 +183,8 @@ function splitDiff(diff: string, maxChangeLength: number) {
 export const getCommitMsgsPromisesFromFileDiffs = async (
   diff: string,
   maxDiffLength: number,
-  fullGitMojiSpec: boolean
+  fullGitMojiSpec: boolean,
+  jiraTicket?: string
 ) => {
   const separator = 'diff --git ';
 
@@ -199,7 +209,8 @@ export const getCommitMsgsPromisesFromFileDiffs = async (
     } else {
       const messages = await generateCommitMessageChatCompletionPrompt(
         separator + fileDiff,
-        fullGitMojiSpec
+        fullGitMojiSpec,
+        jiraTicket
       );
 
       const engine = getEngine();
