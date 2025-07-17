@@ -94,12 +94,15 @@ const FULL_GITMOJI_SPEC = `${GITMOJI_HELP}
 const CONVENTIONAL_COMMIT_KEYWORDS =
   'Do not preface the commit with anything, except for the conventional commit keywords: fix, feat, build, chore, ci, docs, style, refactor, perf, test.';
 
-const getCommitConvention = (fullGitMojiSpec: boolean) =>
-  config.OCO_EMOJI
-    ? fullGitMojiSpec
-      ? FULL_GITMOJI_SPEC
-      : GITMOJI_HELP
-    : CONVENTIONAL_COMMIT_KEYWORDS;
+const getCommitConvention = (fullGitMojiSpec: boolean) => {
+  let result = '';
+  // Always include both guidelines
+  result += `${CONVENTIONAL_COMMIT_KEYWORDS}\n`;
+  if (config.OCO_EMOJI) {
+    result += fullGitMojiSpec ? FULL_GITMOJI_SPEC : GITMOJI_HELP;
+  }
+  return result.trim();
+};
 
 const getDescriptionInstruction = () =>
   config.OCO_DESCRIPTION
@@ -158,7 +161,7 @@ const INIT_MAIN_PROMPT = (
     const userInputContext = userInputCodeContext(context);
 
     const promptContent = `${missionStatement}\n${diffInstruction}\n${conventionGuidelines}\n${descriptionGuideline}\n${oneLineCommitGuideline}\n${scopeInstruction}\n${generalGuidelines}\n${userInputContext}`;
-    // console.log('DEBUG - Generated prompt:', promptContent);
+    console.log('DEBUG - Generated prompt:', promptContent);
     return promptContent;
   })()
 });

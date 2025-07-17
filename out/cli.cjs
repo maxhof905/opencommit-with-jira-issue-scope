@@ -47723,6 +47723,7 @@ var package_default = {
     "deploy:patch": "npm version patch && npm run deploy:build",
     lint: "eslint src --ext ts && tsc --noEmit",
     format: "prettier --write src",
+    "format:check": "prettier --check src",
     test: "node --no-warnings --experimental-vm-modules $( [ -f ./node_modules/.bin/jest ] && echo ./node_modules/.bin/jest || which jest ) test/unit",
     "test:all": "npm run test:unit:docker && npm run test:e2e:docker",
     "test:docker-build": "docker build -t oco-test -f test/Dockerfile .",
@@ -50270,6 +50271,7 @@ var CONFIG_KEYS = /* @__PURE__ */ ((CONFIG_KEYS2) => {
   CONFIG_KEYS2["OCO_API_CUSTOM_HEADERS"] = "OCO_API_CUSTOM_HEADERS";
   CONFIG_KEYS2["OCO_OMIT_SCOPE"] = "OCO_OMIT_SCOPE";
   CONFIG_KEYS2["OCO_GITPUSH"] = "OCO_GITPUSH";
+  CONFIG_KEYS2["OCO_JIRA_TICKET_SCOPE"] = "OCO_JIRA_TICKET_SCOPE";
   return CONFIG_KEYS2;
 })(CONFIG_KEYS || {});
 var MODEL_LIST = {
@@ -50806,6 +50808,14 @@ var configValidators = {
     );
     return value;
   },
+  ["OCO_JIRA_TICKET_SCOPE" /* OCO_JIRA_TICKET_SCOPE */](value) {
+    validateConfig(
+      "OCO_JIRA_TICKET_SCOPE" /* OCO_JIRA_TICKET_SCOPE */,
+      typeof value === "boolean",
+      "Must be boolean: true or false"
+    );
+    return value;
+  },
   ["OCO_LANGUAGE" /* OCO_LANGUAGE */](value) {
     const supportedLanguages = Object.keys(i18n);
     validateConfig(
@@ -50935,7 +50945,7 @@ var DEFAULT_CONFIG = {
   OCO_TOKENS_MAX_INPUT: 4096 /* DEFAULT_MAX_TOKENS_INPUT */,
   OCO_TOKENS_MAX_OUTPUT: 500 /* DEFAULT_MAX_TOKENS_OUTPUT */,
   OCO_DESCRIPTION: false,
-  OCO_EMOJI: false,
+  OCO_EMOJI: true,
   OCO_MODEL: getDefaultModel("openai"),
   OCO_LANGUAGE: "en",
   OCO_MESSAGE_TEMPLATE_PLACEHOLDER: "$msg",
@@ -50945,6 +50955,7 @@ var DEFAULT_CONFIG = {
   OCO_TEST_MOCK_TYPE: "commit-message",
   OCO_WHY: false,
   OCO_OMIT_SCOPE: false,
+  OCO_JIRA_TICKET_SCOPE: true,
   OCO_GITPUSH: true
   // todo: deprecate
 };
@@ -50979,6 +50990,7 @@ var getEnvConfig = (envPath) => {
     OCO_ONE_LINE_COMMIT: parseConfigVarValue(process.env.OCO_ONE_LINE_COMMIT),
     OCO_TEST_MOCK_TYPE: process.env.OCO_TEST_MOCK_TYPE,
     OCO_OMIT_SCOPE: parseConfigVarValue(process.env.OCO_OMIT_SCOPE),
+    OCO_JIRA_TICKET_SCOPE: parseConfigVarValue(process.env.OCO_JIRA_TICKET_SCOPE),
     OCO_GITPUSH: parseConfigVarValue(process.env.OCO_GITPUSH)
     // todo: deprecate
   };
@@ -51115,6 +51127,11 @@ function getConfigKeyDetails(key) {
     case "OCO_OMIT_SCOPE" /* OCO_OMIT_SCOPE */:
       return {
         description: "Do not include a scope in the commit message",
+        values: ["true", "false"]
+      };
+    case "OCO_JIRA_TICKET_SCOPE" /* OCO_JIRA_TICKET_SCOPE */:
+      return {
+        description: "Include JIRA ticket in the scope of the commit message (default: true)",
         values: ["true", "false"]
       };
     case "OCO_GITPUSH" /* OCO_GITPUSH */:
@@ -66419,8 +66436,7 @@ var MistralAiEngine = class {
         if (REQUEST_TOKENS > this.config.maxTokensInput - this.config.maxTokensOutput)
           throw new Error("TOO_MUCH_TOKENS" /* tooMuchTokens */);
         const completion = await this.client.chat.complete(params);
-        if (!completion.choices)
-          throw Error("No completion choice available.");
+        if (!completion.choices) throw Error("No completion choice available.");
         const message = completion.choices[0].message;
         if (!message || !message.content)
           throw Error("No completion choice available.");
@@ -66439,7 +66455,10 @@ var MistralAiEngine = class {
     if (!config7.baseURL) {
       this.client = new Mistral({ apiKey: config7.apiKey });
     } else {
-      this.client = new Mistral({ apiKey: config7.apiKey, serverURL: config7.baseURL });
+      this.client = new Mistral({
+        apiKey: config7.apiKey,
+        serverURL: config7.baseURL
+      });
     }
   }
 };
@@ -66990,14 +67009,30 @@ var FULL_GITMOJI_SPEC = `${GITMOJI_HELP}
 \u{1F9F5}, Add or update code related to multithreading or concurrency; 
 \u{1F9BA}, Add or update code related to validation.`;
 var CONVENTIONAL_COMMIT_KEYWORDS = "Do not preface the commit with anything, except for the conventional commit keywords: fix, feat, build, chore, ci, docs, style, refactor, perf, test.";
-var getCommitConvention = (fullGitMojiSpec) => config4.OCO_EMOJI ? fullGitMojiSpec ? FULL_GITMOJI_SPEC : GITMOJI_HELP : CONVENTIONAL_COMMIT_KEYWORDS;
+var getCommitConvention = (fullGitMojiSpec) => {
+  let result = "";
+  result += `${CONVENTIONAL_COMMIT_KEYWORDS}
+`;
+  if (config4.OCO_EMOJI) {
+    result += fullGitMojiSpec ? FULL_GITMOJI_SPEC : GITMOJI_HELP;
+  }
+  return result.trim();
+};
 var getDescriptionInstruction = () => config4.OCO_DESCRIPTION ? `Add a short description of WHY the changes are done after the commit message. Don't start it with "This commit", just describe the changes.` : "Don't add any descriptions to the commit, only commit message.";
 var getOneLineCommitInstruction = () => config4.OCO_ONE_LINE_COMMIT ? "Craft a concise, single sentence, commit message that encapsulates all changes made, with an emphasis on the primary updates. If the modifications share a common theme or scope, mention it succinctly; otherwise, leave the scope out to maintain focus. The goal is to provide a clear and unified overview of the changes in one single message." : "";
-var getScopeInstruction = () => config4.OCO_OMIT_SCOPE ? "Do not include a scope in the commit message format. Use the format: <type>: <subject>" : "";
+var getScopeInstruction = () => {
+  if (config4.OCO_OMIT_SCOPE) {
+    return "Do not include a scope in the commit message format. Use the format: <type>: <subject>";
+  }
+  if (config4.OCO_JIRA_TICKET_SCOPE !== false) {
+    return "If a Jira ticket number is provided in the user context (formatted like ABC-1234), use it as the scope. Format should be: <type>(<jira-ticket>): <subject>";
+  }
+  return "";
+};
 var userInputCodeContext = (context) => {
   if (context !== "" && context !== " ") {
-    return `Additional context provided by the user: <context>${context}</context>
-Consider this context when generating the commit message, incorporating relevant information when appropriate.`;
+    return `Jira ticket number provided by the user: <context>${context}</context>
+You must use this number as the scope of the commit message`;
   }
   return "";
 };
@@ -67011,9 +67046,9 @@ var INIT_MAIN_PROMPT2 = (language, fullGitMojiSpec, context) => ({
     const descriptionGuideline = getDescriptionInstruction();
     const oneLineCommitGuideline = getOneLineCommitInstruction();
     const scopeInstruction = getScopeInstruction();
-    const generalGuidelines = `Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
+    const generalGuidelines = `Include the Jira ticket number GA-2000 in the scope of the commit message like so: <type>(GA-2000): <subject>. Use the present tense. Lines must not be longer than 74 characters. Use ${language} for the commit message.`;
     const userInputContext = userInputCodeContext(context);
-    return `${missionStatement}
+    const promptContent = `${missionStatement}
 ${diffInstruction}
 ${conventionGuidelines}
 ${descriptionGuideline}
@@ -67021,6 +67056,8 @@ ${oneLineCommitGuideline}
 ${scopeInstruction}
 ${generalGuidelines}
 ${userInputContext}`;
+    console.log("DEBUG - Generated prompt:", promptContent);
+    return promptContent;
   })()
 });
 var INIT_DIFF_PROMPT = {
@@ -67120,7 +67157,10 @@ var config5 = getConfig();
 var MAX_TOKENS_INPUT = config5.OCO_TOKENS_MAX_INPUT;
 var MAX_TOKENS_OUTPUT = config5.OCO_TOKENS_MAX_OUTPUT;
 var generateCommitMessageChatCompletionPrompt = async (diff, fullGitMojiSpec, context) => {
-  const INIT_MESSAGES_PROMPT = await getMainCommitPrompt(fullGitMojiSpec, context);
+  const INIT_MESSAGES_PROMPT = await getMainCommitPrompt(
+    fullGitMojiSpec,
+    context
+  );
   const chatContextAsCompletionRequest = [...INIT_MESSAGES_PROMPT];
   chatContextAsCompletionRequest.push({
     role: "user",
@@ -67698,9 +67738,16 @@ var prepareCommitMessageHook = async (isStageAllFlag = false) => {
     );
     spin.stop("Done");
     const fileContent = await import_promises4.default.readFile(messageFilePath);
+    const divider = "# ---------- [OpenCommit] ---------- #";
     await import_promises4.default.writeFile(
       messageFilePath,
-      commitMessage + "\n" + fileContent.toString()
+      `# ${commitMessage}
+
+${divider}
+# Remove the # above to use this generated commit message.
+# To cancel the commit, just close this window without making any changes.
+
+${fileContent.toString()}`
     );
   } catch (error) {
     ce(`${source_default.red("\u2716")} ${error}`);
@@ -67852,6 +67899,15 @@ var runMigrations = async () => {
   if (!getIsGlobalConfigFileExist()) return;
   const config7 = getConfig();
   if (config7.OCO_AI_PROVIDER === "test" /* TEST */) return;
+  if ([
+    "deepseek" /* DEEPSEEK */,
+    "groq" /* GROQ */,
+    "mistral" /* MISTRAL */,
+    "mlx" /* MLX */,
+    "openrouter" /* OPENROUTER */
+  ].includes(config7.OCO_AI_PROVIDER)) {
+    return;
+  }
   const completedMigrations = getCompletedMigrations();
   let isMigrated = false;
   for (const migration of migrations) {
