@@ -47671,7 +47671,7 @@ function G3(t2, e3) {
 
 // package.json
 var package_default = {
-  name: "opencommit",
+  name: "opencommit-with-jira-issue-scope",
   version: "3.2.9",
   description: "Auto-generate impressive commits in 1 second. Killing lame commits with AI \u{1F92F}\u{1F52B}",
   keywords: [
@@ -67156,7 +67156,9 @@ function mergeDiffs(arr, maxStringLength) {
 var config5 = getConfig();
 var MAX_TOKENS_INPUT = config5.OCO_TOKENS_MAX_INPUT;
 var MAX_TOKENS_OUTPUT = config5.OCO_TOKENS_MAX_OUTPUT;
-var generateCommitMessageChatCompletionPrompt = async (diff, fullGitMojiSpec, context) => {
+var generateCommitMessageChatCompletionPrompt = async (diff, fullGitMojiSpec, context = "") => {
+  console.log("DEBUG - Diff content:");
+  console.log(diff);
   const INIT_MESSAGES_PROMPT = await getMainCommitPrompt(
     fullGitMojiSpec,
     context
