@@ -114,10 +114,8 @@ const getDescriptionInstruction = () =>
 const getScopeInstruction = (jiraTicket?: string) => {
   if (config.OCO_JIRA_TICKET_SCOPE) {
     return `Use "${jiraTicket}" as the scope of the commit message. The expected output format is: \`<emoji><keyword>(${jiraTicket}):<commit message>\``;
-  } else if (config.OCO_OMIT_SCOPE) {
-    return 'Do not include a scope in the commit message format. Use the format: <type>: <subject>';
   } else {
-    return '';
+    return `Use the common denominator of all changes as the scope of the commit message. The expected output format is: \`<emoji><keyword>(common denominator):<commit message>\``;
   }
 };
 
@@ -215,15 +213,8 @@ const generateCommitString = (
 };
 
 const getConsistencyContent = (translation: ConsistencyPrompt) => {
-  const fixMessage =
-    config.OCO_OMIT_SCOPE && translation.commitFixOmitScope
-      ? translation.commitFixOmitScope
-      : translation.commitFix;
-
-  const featMessage =
-    config.OCO_OMIT_SCOPE && translation.commitFeatOmitScope
-      ? translation.commitFeatOmitScope
-      : translation.commitFeat;
+  const fixMessage = translation.commitFix;
+  const featMessage = translation.commitFeat;
 
   const fix = generateCommitString('fix', fixMessage);
   const feat = generateCommitString('feat', featMessage);

@@ -25,7 +25,6 @@ export enum CONFIG_KEYS {
   OCO_TEST_MOCK_TYPE = 'OCO_TEST_MOCK_TYPE',
   OCO_API_URL = 'OCO_API_URL',
   OCO_API_CUSTOM_HEADERS = 'OCO_API_CUSTOM_HEADERS',
-  OCO_OMIT_SCOPE = 'OCO_OMIT_SCOPE',
   OCO_GITPUSH = 'OCO_GITPUSH', // todo: deprecate
   OCO_JIRA_TICKET_SCOPE = 'OCO_JIRA_TICKET_SCOPE'
 }
@@ -588,16 +587,6 @@ export const configValidators = {
     return value;
   },
 
-  [CONFIG_KEYS.OCO_OMIT_SCOPE](value: any) {
-    validateConfig(
-      CONFIG_KEYS.OCO_OMIT_SCOPE,
-      typeof value === 'boolean',
-      'Must be boolean: true or false'
-    );
-
-    return value;
-  },
-
   [CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE](value: any) {
     validateConfig(
       CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE,
@@ -744,7 +733,6 @@ export type ConfigType = {
   [CONFIG_KEYS.OCO_PROMPT_MODULE]: OCO_PROMPT_MODULE_ENUM;
   [CONFIG_KEYS.OCO_AI_PROVIDER]: OCO_AI_PROVIDER_ENUM;
   [CONFIG_KEYS.OCO_GITPUSH]: boolean;
-  [CONFIG_KEYS.OCO_OMIT_SCOPE]: boolean;
   [CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE]: boolean;
   [CONFIG_KEYS.OCO_TEST_MOCK_TYPE]: string;
 };
@@ -792,7 +780,6 @@ export const DEFAULT_CONFIG = {
   OCO_AI_PROVIDER: OCO_AI_PROVIDER_ENUM.OPENAI,
   OCO_TEST_MOCK_TYPE: 'commit-message',
   OCO_WHY: false,
-  OCO_OMIT_SCOPE: false,
   OCO_JIRA_TICKET_SCOPE: true,
   OCO_GITPUSH: true // todo: deprecate
 };
@@ -832,7 +819,6 @@ const getEnvConfig = (envPath: string) => {
       process.env.OCO_MESSAGE_TEMPLATE_PLACEHOLDER,
     OCO_PROMPT_MODULE: process.env.OCO_PROMPT_MODULE as OCO_PROMPT_MODULE_ENUM,
     OCO_TEST_MOCK_TYPE: process.env.OCO_TEST_MOCK_TYPE,
-    OCO_OMIT_SCOPE: parseConfigVarValue(process.env.OCO_OMIT_SCOPE),
     OCO_JIRA_TICKET_SCOPE: parseConfigVarValue(process.env.OCO_JIRA_TICKET_SCOPE),
     OCO_GITPUSH: parseConfigVarValue(process.env.OCO_GITPUSH) // todo: deprecate
   };
@@ -1001,11 +987,6 @@ function getConfigKeyDetails(key) {
       return {
         description:
           'Output a short description of why the changes were done after the commit message (default: false)',
-        values: ['true', 'false']
-      };
-    case CONFIG_KEYS.OCO_OMIT_SCOPE:
-      return {
-        description: 'Do not include a scope in the commit message',
         values: ['true', 'false']
       };
     case CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE:

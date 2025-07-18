@@ -50268,7 +50268,6 @@ var CONFIG_KEYS = /* @__PURE__ */ ((CONFIG_KEYS2) => {
   CONFIG_KEYS2["OCO_TEST_MOCK_TYPE"] = "OCO_TEST_MOCK_TYPE";
   CONFIG_KEYS2["OCO_API_URL"] = "OCO_API_URL";
   CONFIG_KEYS2["OCO_API_CUSTOM_HEADERS"] = "OCO_API_CUSTOM_HEADERS";
-  CONFIG_KEYS2["OCO_OMIT_SCOPE"] = "OCO_OMIT_SCOPE";
   CONFIG_KEYS2["OCO_GITPUSH"] = "OCO_GITPUSH";
   CONFIG_KEYS2["OCO_JIRA_TICKET_SCOPE"] = "OCO_JIRA_TICKET_SCOPE";
   return CONFIG_KEYS2;
@@ -50799,14 +50798,6 @@ var configValidators = {
     );
     return value;
   },
-  ["OCO_OMIT_SCOPE" /* OCO_OMIT_SCOPE */](value) {
-    validateConfig(
-      "OCO_OMIT_SCOPE" /* OCO_OMIT_SCOPE */,
-      typeof value === "boolean",
-      "Must be boolean: true or false"
-    );
-    return value;
-  },
   ["OCO_JIRA_TICKET_SCOPE" /* OCO_JIRA_TICKET_SCOPE */](value) {
     validateConfig(
       "OCO_JIRA_TICKET_SCOPE" /* OCO_JIRA_TICKET_SCOPE */,
@@ -50944,7 +50935,6 @@ var DEFAULT_CONFIG = {
   OCO_AI_PROVIDER: "openai" /* OPENAI */,
   OCO_TEST_MOCK_TYPE: "commit-message",
   OCO_WHY: false,
-  OCO_OMIT_SCOPE: false,
   OCO_JIRA_TICKET_SCOPE: true,
   OCO_GITPUSH: true
   // todo: deprecate
@@ -50978,7 +50968,6 @@ var getEnvConfig = (envPath) => {
     OCO_MESSAGE_TEMPLATE_PLACEHOLDER: process.env.OCO_MESSAGE_TEMPLATE_PLACEHOLDER,
     OCO_PROMPT_MODULE: process.env.OCO_PROMPT_MODULE,
     OCO_TEST_MOCK_TYPE: process.env.OCO_TEST_MOCK_TYPE,
-    OCO_OMIT_SCOPE: parseConfigVarValue(process.env.OCO_OMIT_SCOPE),
     OCO_JIRA_TICKET_SCOPE: parseConfigVarValue(process.env.OCO_JIRA_TICKET_SCOPE),
     OCO_GITPUSH: parseConfigVarValue(process.env.OCO_GITPUSH)
     // todo: deprecate
@@ -51106,11 +51095,6 @@ function getConfigKeyDetails(key) {
     case "OCO_WHY" /* OCO_WHY */:
       return {
         description: "Output a short description of why the changes were done after the commit message (default: false)",
-        values: ["true", "false"]
-      };
-    case "OCO_OMIT_SCOPE" /* OCO_OMIT_SCOPE */:
-      return {
-        description: "Do not include a scope in the commit message",
         values: ["true", "false"]
       };
     case "OCO_JIRA_TICKET_SCOPE" /* OCO_JIRA_TICKET_SCOPE */:
@@ -66709,10 +66693,7 @@ var inferPromptsFromCommitlintConfig = (config7) => {
     (ruleName) => getPrompt(ruleName, rules[ruleName], prompt)
   ).filter((prompt2) => prompt2 !== null);
 };
-var STRUCTURE_OF_COMMIT = config2.OCO_OMIT_SCOPE ? `
-- Header of commit is composed of type and subject: <type-of-commit>: <subject-of-commit>
-- Description of commit is composed of body and footer (optional): <body-of-commit>
-<footer(s)-of-commit>` : `
+var STRUCTURE_OF_COMMIT = `
 - Header of commit is composed of type, scope, subject: <type-of-commit>(<scope-of-commit>): <subject-of-commit>
 - Description of commit is composed of body and footer (optional): <body-of-commit>
 <footer(s)-of-commit>`;
@@ -66726,7 +66707,7 @@ Here are the specific requirements and conventions that should be strictly follo
 Commit Message Conventions:
 - The commit message consists of three parts: Header, Body, and Footer.
 - Header:
-  - Format: ${config2.OCO_OMIT_SCOPE ? "`<type>: <subject>`" : "`<type>(<scope>): <subject>`"}
+  - Format: \`<type>(<scope>): <subject>\`
 - ${prompts.join("\n- ")}
 
 JSON Output Format:
@@ -66736,8 +66717,6 @@ JSON Output Format:
   "localLanguage": "${translation.localLanguage}",
   "commitFix": "<Header of commit for bug fix with scope>",
   "commitFeat": "<Header of commit for feature with scope>",
-  "commitFixOmitScope": "<Header of commit for bug fix without scope>",
-  "commitFeatOmitScope": "<Header of commit for feature without scope>",
   "commitDescription": "<Description of commit for both the bug fix and the feature>"
 }
 \`\`\`
@@ -66758,7 +66737,6 @@ var INIT_MAIN_PROMPT = (language, prompts) => ({
 ${config2.OCO_EMOJI ? "Use GitMoji convention to preface the commit." : "Do not preface the commit with anything."}
 ${config2.OCO_DESCRIPTION ? `Add a short description of WHY the changes are done after the commit message. Don't start it with "This commit", just describe the changes.` : "Don't add any descriptions to the commit, only commit message."}
 Use the present tense. Use ${language} to answer.
-${config2.OCO_OMIT_SCOPE ? "Do not include a scope in the commit message format. Use the format: <type>: <subject>" : ""}
 You will strictly follow the following conventions to generate the content of the commit message:
 - ${prompts.join("\n- ")}
 
@@ -66998,8 +66976,10 @@ var getJiraTicketFromBranch = async () => {
   const { stdout } = await execa("git", ["branch", "--show-current"]);
   const branchName = stdout.trim();
   const jiraTicketMatch = branchName.match(/([A-Z]+-\d+)/);
-  console.log("DEBUG - jiraTicketMatch:\n", jiraTicketMatch);
-  return jiraTicketMatch[1];
+  if (jiraTicketMatch && jiraTicketMatch[1]) {
+    return jiraTicketMatch[1];
+  }
+  return "";
 };
 
 // src/prompts.ts
@@ -67096,10 +67076,8 @@ var getDescriptionInstruction = () => config4.OCO_DESCRIPTION ? `Add a short des
 var getScopeInstruction = (jiraTicket) => {
   if (config4.OCO_JIRA_TICKET_SCOPE) {
     return `Use "${jiraTicket}" as the scope of the commit message. The expected output format is: \`<emoji><keyword>(${jiraTicket}):<commit message>\``;
-  } else if (config4.OCO_OMIT_SCOPE) {
-    return "Do not include a scope in the commit message format. Use the format: <type>: <subject>";
   } else {
-    return "";
+    return `Use the common denominator of all changes as the scope of the commit message. The expected output format is: \`<emoji><keyword>(common denominator):<commit message>\``;
   }
 };
 var userInputCodeContext = (context) => {
@@ -67133,7 +67111,6 @@ var INIT_MAIN_PROMPT2 = (language, fullGitMojiSpec, context, jiraTicket) => ({
   * ${descriptionGuideline}
   * ${userInputContext}
   `.trim();
-    console.log("DEBUG - Generated prompt:\n", promptContent);
     return promptContent;
   })()
 });
@@ -67173,8 +67150,8 @@ var generateCommitString = (type2, message) => {
   return config4.OCO_EMOJI ? `${COMMIT_TYPES[type2]} ${cleanMessage}` : message;
 };
 var getConsistencyContent = (translation4) => {
-  const fixMessage = config4.OCO_OMIT_SCOPE && translation4.commitFixOmitScope ? translation4.commitFixOmitScope : translation4.commitFix;
-  const featMessage = config4.OCO_OMIT_SCOPE && translation4.commitFeatOmitScope ? translation4.commitFeatOmitScope : translation4.commitFeat;
+  const fixMessage = translation4.commitFix;
+  const featMessage = translation4.commitFeat;
   const fix = generateCommitString("fix", fixMessage);
   const feat = generateCommitString("feat", featMessage);
   const description = config4.OCO_DESCRIPTION ? translation4.commitDescription : "";

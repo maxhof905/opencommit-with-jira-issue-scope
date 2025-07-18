@@ -204,11 +204,7 @@ export const inferPromptsFromCommitlintConfig = (
  * ubiquitous language from @commitlint.
  * While gpt-4 does this on it self, gpt-3.5 can't map this on his own atm.
  */
-const STRUCTURE_OF_COMMIT = config.OCO_OMIT_SCOPE
-  ? `
-- Header of commit is composed of type and subject: <type-of-commit>: <subject-of-commit>
-- Description of commit is composed of body and footer (optional): <body-of-commit>\n<footer(s)-of-commit>`
-  : `
+const STRUCTURE_OF_COMMIT = `
 - Header of commit is composed of type, scope, subject: <type-of-commit>(<scope-of-commit>): <subject-of-commit>
 - Description of commit is composed of body and footer (optional): <body-of-commit>\n<footer(s)-of-commit>`;
 
@@ -225,11 +221,7 @@ Here are the specific requirements and conventions that should be strictly follo
 Commit Message Conventions:
 - The commit message consists of three parts: Header, Body, and Footer.
 - Header:
-  - Format: ${
-    config.OCO_OMIT_SCOPE
-      ? '`<type>: <subject>`'
-      : '`<type>(<scope>): <subject>`'
-  }
+  - Format: \`<type>(<scope>): <subject>\`
 - ${prompts.join('\n- ')}
 
 JSON Output Format:
@@ -239,8 +231,6 @@ JSON Output Format:
   "localLanguage": "${translation.localLanguage}",
   "commitFix": "<Header of commit for bug fix with scope>",
   "commitFeat": "<Header of commit for feature with scope>",
-  "commitFixOmitScope": "<Header of commit for bug fix without scope>",
-  "commitFeatOmitScope": "<Header of commit for feature without scope>",
   "commitDescription": "<Description of commit for both the bug fix and the feature>"
 }
 \`\`\`
@@ -282,11 +272,6 @@ ${
     : "Don't add any descriptions to the commit, only commit message."
 }
 Use the present tense. Use ${language} to answer.
-${
-  config.OCO_OMIT_SCOPE
-    ? 'Do not include a scope in the commit message format. Use the format: <type>: <subject>'
-    : ''
-}
 You will strictly follow the following conventions to generate the content of the commit message:
 - ${prompts.join('\n- ')}
 

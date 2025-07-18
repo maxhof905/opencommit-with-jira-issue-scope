@@ -106,7 +106,6 @@ describe('config', () => {
 
       envConfigFile = await generateConfig('.env', {
         OCO_TOKENS_MAX_INPUT: '8192',
-        OCO_OMIT_SCOPE: 'true'
       });
 
       const config = getConfig({
@@ -118,7 +117,6 @@ describe('config', () => {
       expect(config.OCO_TOKENS_MAX_INPUT).toEqual(8192);
       expect(config.OCO_TOKENS_MAX_OUTPUT).toEqual(500);
       expect(config.OCO_GITPUSH).toEqual(true);
-      expect(config.OCO_OMIT_SCOPE).toEqual(true);
     });
     
     it('should handle custom HTTP headers correctly', async () => {
