@@ -21,7 +21,7 @@ export const getOpenCommitIgnore = (): Ignore => {
 
   try {
     ig.add(readFileSync('.opencommitignore').toString().split('\n'));
-  } catch (e) {}
+  } catch (e) { }
 
   return ig;
 };
@@ -116,4 +116,16 @@ export const getDiff = async ({ files }: { files: string[] }) => {
   ]);
 
   return diff;
+};
+
+export const getJiraTicketFromBranch = async (): Promise<string> => {
+  const { stdout } = await execa('git', ['branch', '--show-current']);
+  const branchName = stdout.trim();
+
+  // Extract pattern like GA-1234, ABC-5678, etc.
+  const jiraTicketMatch = branchName.match(/([A-Z]+-\d+)/);
+  if (jiraTicketMatch && jiraTicketMatch[1]) {
+    return jiraTicketMatch[1];
+  }
+  return '';
 };

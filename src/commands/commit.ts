@@ -15,7 +15,8 @@ import {
   getChangedFiles,
   getDiff,
   getStagedFiles,
-  gitAdd
+  gitAdd,
+  getJiraTicketFromBranch
 } from '../utils/git';
 import { trytm } from '../utils/trytm';
 import { getConfig } from './config';
@@ -42,6 +43,7 @@ interface GenerateCommitMessageFromGitDiffParams {
   context?: string;
   fullGitMojiSpec?: boolean;
   skipCommitConfirmation?: boolean;
+  jiraTicket?: string;
 }
 
 const generateCommitMessageFromGitDiff = async ({
@@ -49,7 +51,8 @@ const generateCommitMessageFromGitDiff = async ({
   extraArgs,
   context = '',
   fullGitMojiSpec = false,
-  skipCommitConfirmation = false
+  skipCommitConfirmation = false,
+  jiraTicket
 }: GenerateCommitMessageFromGitDiffParams): Promise<void> => {
   await assertGitRepo();
   const commitGenerationSpinner = spinner();
@@ -277,13 +280,16 @@ export async function commit(
       .join('\n')}`
   );
 
+  const jiraTicket = await getJiraTicketFromBranch();
+
   const [, generateCommitError] = await trytm(
     generateCommitMessageFromGitDiff({
       diff: await getDiff({ files: stagedFiles }),
       extraArgs,
       context,
       fullGitMojiSpec,
-      skipCommitConfirmation
+      skipCommitConfirmation,
+      jiraTicket
     })
   );
 

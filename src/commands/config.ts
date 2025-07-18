@@ -22,12 +22,11 @@ export enum CONFIG_KEYS {
   OCO_MESSAGE_TEMPLATE_PLACEHOLDER = 'OCO_MESSAGE_TEMPLATE_PLACEHOLDER',
   OCO_PROMPT_MODULE = 'OCO_PROMPT_MODULE',
   OCO_AI_PROVIDER = 'OCO_AI_PROVIDER',
-  OCO_ONE_LINE_COMMIT = 'OCO_ONE_LINE_COMMIT',
   OCO_TEST_MOCK_TYPE = 'OCO_TEST_MOCK_TYPE',
   OCO_API_URL = 'OCO_API_URL',
   OCO_API_CUSTOM_HEADERS = 'OCO_API_CUSTOM_HEADERS',
-  OCO_OMIT_SCOPE = 'OCO_OMIT_SCOPE',
-  OCO_GITPUSH = 'OCO_GITPUSH' // todo: deprecate
+  OCO_GITPUSH = 'OCO_GITPUSH', // todo: deprecate
+  OCO_JIRA_TICKET_SCOPE = 'OCO_JIRA_TICKET_SCOPE'
 }
 
 export enum CONFIG_MODES {
@@ -588,9 +587,9 @@ export const configValidators = {
     return value;
   },
 
-  [CONFIG_KEYS.OCO_OMIT_SCOPE](value: any) {
+  [CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE](value: any) {
     validateConfig(
-      CONFIG_KEYS.OCO_OMIT_SCOPE,
+      CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE,
       typeof value === 'boolean',
       'Must be boolean: true or false'
     );
@@ -683,16 +682,6 @@ export const configValidators = {
     return value;
   },
 
-  [CONFIG_KEYS.OCO_ONE_LINE_COMMIT](value: any) {
-    validateConfig(
-      CONFIG_KEYS.OCO_ONE_LINE_COMMIT,
-      typeof value === 'boolean',
-      'Must be true or false'
-    );
-
-    return value;
-  },
-
   [CONFIG_KEYS.OCO_TEST_MOCK_TYPE](value: any) {
     validateConfig(
       CONFIG_KEYS.OCO_TEST_MOCK_TYPE,
@@ -744,8 +733,7 @@ export type ConfigType = {
   [CONFIG_KEYS.OCO_PROMPT_MODULE]: OCO_PROMPT_MODULE_ENUM;
   [CONFIG_KEYS.OCO_AI_PROVIDER]: OCO_AI_PROVIDER_ENUM;
   [CONFIG_KEYS.OCO_GITPUSH]: boolean;
-  [CONFIG_KEYS.OCO_ONE_LINE_COMMIT]: boolean;
-  [CONFIG_KEYS.OCO_OMIT_SCOPE]: boolean;
+  [CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE]: boolean;
   [CONFIG_KEYS.OCO_TEST_MOCK_TYPE]: string;
 };
 
@@ -784,16 +772,15 @@ export const DEFAULT_CONFIG = {
   OCO_TOKENS_MAX_INPUT: DEFAULT_TOKEN_LIMITS.DEFAULT_MAX_TOKENS_INPUT,
   OCO_TOKENS_MAX_OUTPUT: DEFAULT_TOKEN_LIMITS.DEFAULT_MAX_TOKENS_OUTPUT,
   OCO_DESCRIPTION: false,
-  OCO_EMOJI: false,
+  OCO_EMOJI: true,
   OCO_MODEL: getDefaultModel('openai'),
   OCO_LANGUAGE: 'en',
   OCO_MESSAGE_TEMPLATE_PLACEHOLDER: '$msg',
   OCO_PROMPT_MODULE: OCO_PROMPT_MODULE_ENUM.CONVENTIONAL_COMMIT,
   OCO_AI_PROVIDER: OCO_AI_PROVIDER_ENUM.OPENAI,
-  OCO_ONE_LINE_COMMIT: false,
   OCO_TEST_MOCK_TYPE: 'commit-message',
   OCO_WHY: false,
-  OCO_OMIT_SCOPE: false,
+  OCO_JIRA_TICKET_SCOPE: true,
   OCO_GITPUSH: true // todo: deprecate
 };
 
@@ -831,10 +818,8 @@ const getEnvConfig = (envPath: string) => {
     OCO_MESSAGE_TEMPLATE_PLACEHOLDER:
       process.env.OCO_MESSAGE_TEMPLATE_PLACEHOLDER,
     OCO_PROMPT_MODULE: process.env.OCO_PROMPT_MODULE as OCO_PROMPT_MODULE_ENUM,
-    OCO_ONE_LINE_COMMIT: parseConfigVarValue(process.env.OCO_ONE_LINE_COMMIT),
     OCO_TEST_MOCK_TYPE: process.env.OCO_TEST_MOCK_TYPE,
-    OCO_OMIT_SCOPE: parseConfigVarValue(process.env.OCO_OMIT_SCOPE),
-
+    OCO_JIRA_TICKET_SCOPE: parseConfigVarValue(process.env.OCO_JIRA_TICKET_SCOPE),
     OCO_GITPUSH: parseConfigVarValue(process.env.OCO_GITPUSH) // todo: deprecate
   };
 };
@@ -987,11 +972,6 @@ function getConfigKeyDetails(key) {
         description: 'The type of test mock to use',
         values: ['commit-message', 'prompt-module-commitlint-config']
       };
-    case CONFIG_KEYS.OCO_ONE_LINE_COMMIT:
-      return {
-        description: 'One line commit message',
-        values: ['true', 'false']
-      };
     case CONFIG_KEYS.OCO_DESCRIPTION:
       return {
         description:
@@ -1009,9 +989,10 @@ function getConfigKeyDetails(key) {
           'Output a short description of why the changes were done after the commit message (default: false)',
         values: ['true', 'false']
       };
-    case CONFIG_KEYS.OCO_OMIT_SCOPE:
+    case CONFIG_KEYS.OCO_JIRA_TICKET_SCOPE:
       return {
-        description: 'Do not include a scope in the commit message',
+        description:
+          'Include JIRA ticket in the scope of the commit message (default: true)',
         values: ['true', 'false']
       };
     case CONFIG_KEYS.OCO_GITPUSH:
