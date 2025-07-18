@@ -63,17 +63,22 @@ oco config set <CONFIG_PARAM>
 open ~/.opencommit
 ```
 #### Use with OpenAI Settings
+```
 OCO_AI_PROVIDER=openai
 OCO_API_KEY=...
 OCO_MODEL=gpt-4o-mini
+```
 
 #### Use with Ollama settings
+```
 OCO_API_URL=http://localhost:11434/api/chat
 OCO_AI_PROVIDER=ollama
 OCO_MODEL=llama3:8b
+```
 
 ***NOTE deprecated OCO_OMIT_SCOPE and OCO_ONE_LINE_COMMIT for the purpose of this fork***
 #### all other settings
+```
 OCO_API_CUSTOM_HEADERS=undefined
 OCO_TOKENS_MAX_INPUT=4096
 OCO_TOKENS_MAX_OUTPUT=70
@@ -86,7 +91,7 @@ OCO_TEST_MOCK_TYPE=commit-message
 OCO_JIRA_TICKET_SCOPE=true
 OCO_GITPUSH=true
 OCO_WHY=false
-
+```
 
 ## 📄 License
 
